@@ -15,3 +15,85 @@ model OperationRecord {
   metric     String
   createdAt  DateTime @default(now())
 }
+
+model Store {
+  id        Int      @id @default(autoincrement())
+  name      String   @unique
+  code      String   @unique
+  address   String?
+  createdAt DateTime @default(now())
+  products  ProductInventory[]
+  slowMovingProducts SlowMovingProduct[]
+}
+
+model Category {
+  id        Int      @id @default(autoincrement())
+  name      String   @unique
+  code      String   @unique
+  createdAt DateTime @default(now())
+  products  Product[]
+}
+
+model Product {
+  id         Int      @id @default(autoincrement())
+  sku        String   @unique
+  name       String
+  barcode    String?
+  spec       String?
+  categoryId Int
+  category   Category @relation(fields: [categoryId], references: [id])
+  createdAt  DateTime @default(now())
+  inventory  ProductInventory[]
+  slowMovingProducts SlowMovingProduct[]
+}
+
+model ProductInventory {
+  id         Int      @id @default(autoincrement())
+  storeId    Int
+  store      Store    @relation(fields: [storeId], references: [id])
+  productId  Int
+  product    Product  @relation(fields: [productId], references: [id])
+  stock      Int      @default(0)
+  safeStock  Int      @default(10)
+  lastSaleAt DateTime?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @default(now())
+  @@unique([storeId, productId])
+}
+
+model SlowMovingProduct {
+  id               Int                   @id @default(autoincrement())
+  storeId          Int
+  store            Store                 @relation(fields: [storeId], references: [id])
+  productId        Int
+  product          Product               @relation(fields: [productId], references: [id])
+  stock            Int
+  slowDays         Int
+  lastSaleAt       DateTime?
+  suggestionStatus SuggestionStatus      @default(PENDING)
+  suggestion       String?
+  createdAt        DateTime              @default(now())
+  operationTask    OperationTask?
+  @@unique([storeId, productId])
+}
+
+enum SuggestionStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+}
+
+model OperationTask {
+  id                Int      @id @default(autoincrement())
+  slowMovingProductId Int    @unique
+  slowMovingProduct SlowMovingProduct @relation(fields: [slowMovingProductId], references: [id])
+  taskName          String
+  taskType          String
+  priority          String
+  status            String   @default("pending")
+  assignee          String
+  storeName         String
+  productName       String
+  suggestion        String
+  createdAt         DateTime @default(now())
+}

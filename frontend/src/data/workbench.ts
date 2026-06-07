@@ -33,7 +33,7 @@ export const localFeatures: FeatureItem[] = [
     "id": 5,
     "title": "滞销品分析与补货建议",
     "description": "按销量排名分析各门店滞销商品，生成智能补货建议报表，辅助采购决策。",
-    "status": "可导出",
+    "status": "已上线",
     "metric": "28 条"
   }
 ];
