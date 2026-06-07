@@ -49,6 +49,21 @@ function generateSuggestion(productName: string, slowDays: number, stock: number
 async function main() {
   console.log("开始播种数据...");
 
+  const existingOpRecords = await prisma.operationRecord.findMany();
+  if (existingOpRecords.length === 0) {
+    await prisma.operationRecord.create({
+      data: {
+        moduleName: "多门店SKU统一管理",
+        ownerName: "运营组",
+        status: "ready",
+        metric: "100%",
+      },
+    });
+    console.log("OperationRecord 数据已初始化");
+  } else {
+    console.log("OperationRecord 数据已存在，跳过生成");
+  }
+
   for (const store of stores) {
     await prisma.store.upsert({
       where: { code: store.code },

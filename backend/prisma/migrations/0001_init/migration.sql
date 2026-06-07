@@ -1,3 +1,6 @@
+-- CreateEnum
+CREATE TYPE "SuggestionStatus" AS ENUM ('PENDING', 'ACCEPTED', 'REJECTED');
+
 -- CreateTable
 CREATE TABLE "OperationRecord" (
     "id" SERIAL NOT NULL,
@@ -89,9 +92,6 @@ CREATE TABLE "OperationTask" (
 
     CONSTRAINT "OperationTask_pkey" PRIMARY KEY ("id")
 );
-
--- CreateEnum
-CREATE TYPE "SuggestionStatus" AS ENUM ('PENDING', 'ACCEPTED', 'REJECTED');
 
 -- CreateIndex
 CREATE UNIQUE INDEX "Store_name_key" ON "Store"("name");
