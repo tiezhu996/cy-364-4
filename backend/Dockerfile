@@ -3,6 +3,7 @@ WORKDIR /app
 COPY package*.json ./
 RUN npm install --include=dev --no-audit --no-fund
 COPY . .
+RUN npx prisma generate
 RUN npm run build
 
 FROM node:20
@@ -11,5 +12,9 @@ ENV NODE_ENV=production
 COPY package*.json ./
 RUN npm install --omit=dev
 COPY --from=build /app/dist ./dist
+COPY --from=build /app/prisma ./prisma
+COPY --from=build /app/node_modules/.prisma ./node_modules/.prisma
+COPY start.sh ./
+RUN chmod +x start.sh
 EXPOSE 29504
-CMD ["node", "dist/main.js"]
+CMD ["./start.sh"]

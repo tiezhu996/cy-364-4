@@ -6,17 +6,17 @@ export class SlowmovingController {
   constructor(private readonly slowmovingService: SlowmovingService) {}
 
   @Get("api/slowmoving/stores")
-  apiStores() {
+  async apiStores() {
     return this.slowmovingService.getStores();
   }
 
   @Get("api/slowmoving/categories")
-  apiCategories() {
+  async apiCategories() {
     return this.slowmovingService.getCategories();
   }
 
   @Get("api/slowmoving/products")
-  apiProducts(
+  async apiProducts(
     @Query("storeId") storeId?: string,
     @Query("categoryId") categoryId?: string,
   ) {
@@ -28,17 +28,17 @@ export class SlowmovingController {
   }
 
   @Post("api/slowmoving/products/:id/accept")
-  apiAccept(@Param("id") id: string) {
+  async apiAccept(@Param("id") id: string) {
     return this.slowmovingService.acceptSuggestion(parseInt(id, 10));
   }
 
   @Post("api/slowmoving/products/:id/reject")
-  apiReject(@Param("id") id: string) {
+  async apiReject(@Param("id") id: string) {
     return this.slowmovingService.rejectSuggestion(parseInt(id, 10));
   }
 
   @Get("api/slowmoving/tasks")
-  apiTasks() {
+  async apiTasks() {
     return this.slowmovingService.getOperationTasks();
   }
 }

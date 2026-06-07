@@ -1,12 +1,13 @@
 import { Injectable } from "@nestjs/common";
-import { slowMovingProducts, stores, categories, operationTasks } from "./slowmoving.data";
+import { PrismaService } from "../common/prisma.service";
+import { SuggestionStatus } from "@prisma/client";
 
 interface SlowMovingQuery {
   storeId?: number;
   categoryId?: number;
 }
 
-interface SlowMovingItem {
+interface SlowMovingItemResponse {
   id: number;
   storeId: number;
   storeName: string;
@@ -21,7 +22,7 @@ interface SlowMovingItem {
   suggestion: string;
 }
 
-interface OperationTask {
+interface OperationTaskResponse {
   id: number;
   slowMovingProductId: number;
   taskName: string;
@@ -37,87 +38,161 @@ interface OperationTask {
 
 @Injectable()
 export class SlowmovingService {
-  getStores() {
-    return stores;
+  constructor(private prisma: PrismaService) {}
+
+  async getStores() {
+    return this.prisma.store.findMany({
+      orderBy: { id: "asc" },
+    });
   }
 
-  getCategories() {
-    return categories;
+  async getCategories() {
+    return this.prisma.category.findMany({
+      orderBy: { id: "asc" },
+    });
   }
 
-  getSlowMovingProducts(query: SlowMovingQuery) {
-    let result: SlowMovingItem[] = [...slowMovingProducts];
+  async getSlowMovingProducts(query: SlowMovingQuery) {
+    const whereClause: any = {};
 
     if (query.storeId) {
-      result = result.filter(item => item.storeId === query.storeId);
+      whereClause.storeId = query.storeId;
     }
 
     if (query.categoryId) {
-      const category = categories.find(c => c.id === query.categoryId);
-      if (category) {
-        result = result.filter(item => item.categoryName === category.name);
-      }
+      whereClause.product = {
+        categoryId: query.categoryId,
+      };
     }
 
-    result.sort((a, b) => b.slowDays - a.slowDays);
+    const items = await this.prisma.slowMovingProduct.findMany({
+      where: whereClause,
+      include: {
+        store: true,
+        product: {
+          include: {
+            category: true,
+          },
+        },
+      },
+      orderBy: { slowDays: "desc" },
+    });
+
+    const result: SlowMovingItemResponse[] = items.map((item) => ({
+      id: item.id,
+      storeId: item.storeId,
+      storeName: item.store.name,
+      productId: item.productId,
+      productName: item.product.name,
+      productSku: item.product.sku,
+      categoryName: item.product.category.name,
+      stock: item.stock,
+      slowDays: item.slowDays,
+      lastSaleAt: item.lastSaleAt ? item.lastSaleAt.toISOString() : "",
+      suggestionStatus: item.suggestionStatus,
+      suggestion: item.suggestion || "",
+    }));
 
     return {
       total: result.length,
-      redAlertCount: result.filter(item => item.slowDays > 20).length,
+      redAlertCount: result.filter((item) => item.slowDays > 20).length,
       items: result,
     };
   }
 
-  acceptSuggestion(id: number) {
-    const item = slowMovingProducts.find(p => p.id === id);
+  async acceptSuggestion(id: number) {
+    const item = await this.prisma.slowMovingProduct.findUnique({
+      where: { id },
+      include: {
+        store: true,
+        product: true,
+      },
+    });
+
     if (!item) {
       throw new Error("记录不存在");
     }
 
-    if (item.suggestionStatus === "ACCEPTED") {
+    if (item.suggestionStatus === SuggestionStatus.ACCEPTED) {
       return { success: false, message: "该建议已采纳" };
     }
 
-    item.suggestionStatus = "ACCEPTED";
+    const existingTask = await this.prisma.operationTask.findUnique({
+      where: { slowMovingProductId: id },
+    });
 
-    const taskId = operationTasks.length + 1;
+    if (existingTask) {
+      return { success: false, message: "该建议已生成运营任务" };
+    }
+
+    await this.prisma.slowMovingProduct.update({
+      where: { id },
+      data: {
+        suggestionStatus: SuggestionStatus.ACCEPTED,
+      },
+    });
+
     const priority = item.slowDays > 30 ? "高" : item.slowDays > 20 ? "中" : "低";
     const taskType = item.slowDays > 30 ? "清仓促销" : "库存调拨";
 
-    const task: OperationTask = {
-      id: taskId,
-      slowMovingProductId: id,
-      taskName: `${item.storeName}-${item.productName}-滞销处理`,
-      taskType,
-      priority,
-      status: "待处理",
-      assignee: "运营组",
-      storeName: item.storeName,
-      productName: item.productName,
-      suggestion: item.suggestion || "",
-      createdAt: new Date().toISOString(),
-    };
+    const task = await this.prisma.operationTask.create({
+      data: {
+        slowMovingProductId: id,
+        taskName: `${item.store.name}-${item.product.name}-滞销处理`,
+        taskType,
+        priority,
+        status: "待处理",
+        assignee: "运营组",
+        storeName: item.store.name,
+        productName: item.product.name,
+        suggestion: item.suggestion || "",
+      },
+    });
 
-    operationTasks.push(task);
+    const taskResponse: OperationTaskResponse = {
+      id: task.id,
+      slowMovingProductId: task.slowMovingProductId,
+      taskName: task.taskName,
+      taskType: task.taskType,
+      priority: task.priority,
+      status: task.status,
+      assignee: task.assignee,
+      storeName: task.storeName,
+      productName: task.productName,
+      suggestion: task.suggestion,
+      createdAt: task.createdAt.toISOString(),
+    };
 
     return {
       success: true,
       message: "已采纳，运营任务已生成",
-      task,
+      task: taskResponse,
     };
   }
 
-  rejectSuggestion(id: number) {
-    const item = slowMovingProducts.find(p => p.id === id);
+  async rejectSuggestion(id: number) {
+    const item = await this.prisma.slowMovingProduct.findUnique({
+      where: { id },
+    });
+
     if (!item) {
       throw new Error("记录不存在");
     }
 
-    if (item.suggestionStatus === "REJECTED") {
+    if (item.suggestionStatus === SuggestionStatus.REJECTED) {
       return { success: false, message: "该建议已驳回" };
     }
 
-    item.suggestionStatus = "REJECTED";
+    if (item.suggestionStatus === SuggestionStatus.ACCEPTED) {
+      return { success: false, message: "该建议已采纳，无法驳回" };
+    }
+
+    await this.prisma.slowMovingProduct.update({
+      where: { id },
+      data: {
+        suggestionStatus: SuggestionStatus.REJECTED,
+      },
+    });
 
     return {
       success: true,
@@ -125,7 +200,23 @@ export class SlowmovingService {
     };
   }
 
-  getOperationTasks() {
-    return operationTasks.sort((a, b) => b.id - a.id);
+  async getOperationTasks() {
+    const tasks = await this.prisma.operationTask.findMany({
+      orderBy: { id: "desc" },
+    });
+
+    return tasks.map((task): OperationTaskResponse => ({
+      id: task.id,
+      slowMovingProductId: task.slowMovingProductId,
+      taskName: task.taskName,
+      taskType: task.taskType,
+      priority: task.priority,
+      status: task.status,
+      assignee: task.assignee,
+      storeName: task.storeName,
+      productName: task.productName,
+      suggestion: task.suggestion,
+      createdAt: task.createdAt.toISOString(),
+    }));
   }
 }
